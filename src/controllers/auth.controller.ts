@@ -2,7 +2,7 @@ import prisma from "../db/db.config";
 import { NextFunction, Response, Request } from "express"
 import UserAuthSchema from "../validations/userAuthValidator";
 import bcrypt from "bcryptjs";
-
+import jwt from "jsonwebtoken"
 const GetAllUsers = async (req: Request, res: Response) => {
     const users = await prisma.user.findMany();
     res.json(users);
@@ -65,5 +65,73 @@ export const RegisterUser = async (req: Request, res: Response, next: NextFuncti
 
 
 }
+
+export const LoginUser = async (req: Request, res: Response) => {
+
+
+    const body = req.body;
+
+    const validate = UserAuthSchema.safeParse(body);
+
+    if (!validate.success) {
+        res.status(400).json({ msg: "invalid data " })
+        return;
+    }
+
+    const { email, password } = validate.data;
+
+
+
+    try {
+
+
+        const userExist = await prisma.user.findUnique({
+            where: {
+                email: email
+            }
+        })
+
+        if (!userExist) {
+            res.status(400).json("user doesnot exist.please create account")
+            return;
+        }
+
+        const passwordMatch = await bcrypt.compare(password, userExist.password);
+
+        if (!passwordMatch) {
+            res.status(401).json({
+                msg: "password didnot match"
+            })
+        }
+        // generate json web token
+
+        const token = jwt.sign({
+            userId: userExist.id
+
+        }, process.env.JWT_SECRET_KEY as string, { expiresIn: "1d" })
+
+        res.cookie("auth_token", token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            maxAge: 8640000,
+            sameSite: "strict"
+        })
+
+        res.status(200).json({
+            msg: "loggedin success",
+            userId: userExist.id
+        })
+        return;
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ msg: "error occured", Err: error });
+        return;
+
+    }
+
+
+}
+
+
 
 export default GetAllUsers;
